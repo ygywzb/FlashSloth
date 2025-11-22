@@ -975,7 +975,7 @@ class PhiModel(PhiPreTrainedModel):
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
             )
-
+        # 只是输入的embeddings，接下来全是解码层
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -988,6 +988,7 @@ class PhiModel(PhiPreTrainedModel):
             if hidden_states.shape[1]!=1 and idx+1 == 8 and image_features is None:
                 print("lqformer not be used because of single modal.")
             if hidden_states.shape[1]!=1 and idx+1 == 8 and image_features is not None:
+                # 找到最长的文字描述长度
                 max_text_len = 0
                 for batch_idx, (learnable_indices, question_indices) in enumerate(zip(insert_place, question_token_ranges)):
                     for q_start_idx, q_end_idx in question_indices:
@@ -996,27 +997,39 @@ class PhiModel(PhiPreTrainedModel):
                 combined_imagetokens = []
                 combined_texttokens = []
                 combined_textmasks = []
+                # enumerate出来带idx的元组
+                # question_indices是元组，文字描述token的起止位置
+                # insert_place为learnable token插入位置
                 for batch_idx, (learnable_indices, question_indices) in enumerate(zip(insert_place, question_token_ranges)):
                     if len(learnable_indices) != len(question_indices):
                         print("learnable_indices:", learnable_indices)
                         print("question_indices:", question_indices)
                     # assert len(learnable_indices) == len(question_indices)  # Ensure the same number of learnable tokens and questions
                     for idxx, (q_start_idx, q_end_idx) in zip(learnable_indices, question_indices):
+                        # 找到hidden_states中对应的learnable token，长度固定（6），所以只知道开始位置就好了
                         learnable_token = hidden_states[batch_idx, idxx:idxx+learnable_token_len, :]  
+                        # 外部输入的原始图像特征
                         image_token = image_features[batch_idx]
+                        # 找到文本描述特征，由起止位置来切片
                         text_token = hidden_states[batch_idx, q_start_idx:q_end_idx, :]
+                        # 长度挑最大值，全为0填充
+                        # 然后把实际的文本描述特征放进去，多余的部分都是0
                         padded_text_token = torch.zeros((max_text_len, text_token.size(-1)), device=text_token.device, dtype=text_token.dtype)
                         padded_text_token[:text_token.size(0), :] = text_token  # Pad to the max length
                         
+                        # 创建文本描述的mask，实际位置为1，多余的位置为0
                         text_mask = torch.zeros(max_text_len, device=text_token.device, dtype=text_token.dtype)
                         text_mask[:text_token.size(0)] = 1  # Mark valid positions
 
+                        # 收集所有batch的token和mask，后面一起送入LQFormer
+                        # unsqueeze在第0维度增加一个维度，变成(1, token_len, hidden_size)
                         combined_learnabletokens.append(learnable_token.unsqueeze(0))
                         combined_imagetokens.append(image_token.unsqueeze(0))
                         combined_texttokens.append(padded_text_token.unsqueeze(0))
                         combined_textmasks.append(text_mask.unsqueeze(0))
 
                 # Combine all tokens and masks across the batches
+                # concatenate操作把第0维度连起来，变成(batch_size * num_xxx, token_len, hidden_size)
                 all_combined_learnabletokens = torch.cat(combined_learnabletokens, dim=0)
                 all_combined_imagetokens = torch.cat(combined_imagetokens, dim=0)
                 all_combined_texttokens = torch.cat(combined_texttokens, dim=0)

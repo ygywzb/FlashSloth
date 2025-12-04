@@ -43,7 +43,7 @@ class lqformerattention(nn.Module):
 
         if attention_mask is not None:
             # 多余的全赋成一个很小的值，softmax后接近0
-            # 和计算出的注意力权重加起来
+            # 和计算出的注意力权重加起来（形状一样，因为repeat过，看LQFormerLayer代码）
             attention_mask = attention_mask.masked_fill(attention_mask == 0, -1e4)
             attn_weights = attn_weights + attention_mask
 
@@ -88,12 +88,14 @@ class LQFormerLayer(nn.Module):
             attention_mask = attention_mask.repeat(1, self.n_heads, learnable_tokens.size(1), 1)
         else:
             attention_mask = None
+        # 出来的形状和query tokens一样
         attn_output, _ = self.t2q_attn(query=learnable_tokens, key=text_tokens, value=text_tokens, attention_mask=attention_mask)
         
         # Cross-attention: learnable tokens query image tokens
-        # 第二次交叉注意力，注意v成了原始的image_tokens
+        # 第二次交叉注意力，注意v成了原始的image_tokens，且不再用注意力mask
         # v用原始的是为了信息保真
         image_tokens_down = self.ln_kv(image_tokens_down)
+        # 此时最后一个维度已经成了d_model=1152，倒数第二维度还是learnable tokens的个数
         attn_output, attention_map = self.i2q_attn(query=attn_output, key=image_tokens_down, value=image_tokens, attention_mask=None)
         
         # attention_map中每个头还没合并，这里对每个头的那一维度进行平均，得到最终的attention map

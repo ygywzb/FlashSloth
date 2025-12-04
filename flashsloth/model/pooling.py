@@ -18,11 +18,13 @@ class AveragePooling(nn.Module):
         pooled_features = pooled_features.view(batch_size, -1, dim)
         return pooled_features
 
+# 对着论文图看
 class AttentionPooling(nn.Module):
     def __init__(self, input_dim, pooling_size=2, device='cpu',dtype=torch.float32):
         super(AttentionPooling, self).__init__()
         self.pooling_size = pooling_size
         self.device = device
+        # input_dim是特征的最后一个维度
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, input_dim),
             nn.ReLU(),
@@ -42,6 +44,7 @@ class AttentionPooling(nn.Module):
             for j in range(0, sqrt_n, pooling_size):
                 region = x[:, i:i+pooling_size, j:j+pooling_size, :]
                 region = region.reshape(batch_size, -1, dim)
+                # 每一个特征有一个alpha值
                 alpha = self.mlp(region)
                 alpha = torch.softmax(alpha, dim=1)
                 region_pooled = torch.sum(alpha * region, dim=1)

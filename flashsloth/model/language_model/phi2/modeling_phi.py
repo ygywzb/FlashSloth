@@ -1039,14 +1039,17 @@ class PhiModel(PhiPreTrainedModel):
 
                 # Re-insert the LQFormer outputs back into hidden_states
                 start_idx = 0
+                # modal表示每个learnable token的模态类型，2表示图文，1表示纯文本
                 for batch_idx, (learnable_indices, num) in enumerate(zip(insert_place, modal)):
                     for idxx in learnable_indices:
                         output_slice = lqformer_outputs[start_idx]
                         start_idx += 1
                         
                         # Update hidden_states based on 'num' condition
+                        # 多模态的情况，把结合多模态后的特征直接替换掉原来的learnable token位置
                         if num == 2:
                             hidden_states[batch_idx, idxx:idxx+learnable_token_len, :] = output_slice
+                        # 否则如果是纯文本模态，就不改动原来的learnable token
                         elif num == 1:
                             hidden_states[batch_idx, idxx:idxx+learnable_token_len, :] += output_slice * 0
             if output_hidden_states:

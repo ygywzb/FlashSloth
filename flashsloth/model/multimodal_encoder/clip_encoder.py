@@ -42,6 +42,7 @@ class CLIPVisionTower(nn.Module):
         # set `device_map` to `auto` in order to avoid the warning.
         # [Edited by zhenwei - 2024-02-02 13:03]
         is_meta = getattr(nn.Linear(1, 1, bias=False).weight, 'is_meta', False)
+        # 用的就是这个siglip的，看pretrain.sh
         if 'siglip' in self.vision_tower_name:
             # "google/siglip-so400m-patch14-384"
             self.image_processor = ImpImageProcessor()

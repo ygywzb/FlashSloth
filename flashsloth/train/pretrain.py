@@ -652,6 +652,7 @@ class LazySupervisedDataset(Dataset):
                  tokenizer: transformers.PreTrainedTokenizer,
                  data_args: DataArguments):
         super(LazySupervisedDataset, self).__init__()
+        # 数据集json直接转成的字典
         list_data_dict = json.load(open(data_path, "r"))
         if 'llava_v1_5_mix665k.json' in data_path:
             del list_data_dict[247644]
@@ -697,6 +698,7 @@ class LazySupervisedDataset(Dataset):
             processor = self.data_args.image_processor
             image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
             if self.data_args.image_aspect_ratio == 'pad':
+                # 填充图像成正方形，仅此而已
                 def expand2square(pil_img, background_color):
                     width, height = pil_img.size
                     if width == height:
@@ -709,7 +711,9 @@ class LazySupervisedDataset(Dataset):
                         result = Image.new(pil_img.mode, (height, height), background_color)
                         result.paste(pil_img, ((height - width) // 2, 0))
                         return result
+                # 背景色填充，用均值
                 image = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
+                # 转成tensor
                 image = processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
             elif self.data_args.image_aspect_ratio == 'crop':
                 # center crop
@@ -740,6 +744,7 @@ class LazySupervisedDataset(Dataset):
 
         # image exist in the data
         if 'image' in self.list_data_dict[i]:
+            # 注意，输入的是image
             data_dict['images'] = image
         elif self.data_args.is_multimodal:
             # image does not exist in the data, but the model is multimodal
@@ -748,6 +753,7 @@ class LazySupervisedDataset(Dataset):
             data_dict['images'] = torch.zeros(3, *crop_size.values())
         return data_dict
 
+# 把dataset出来得到多个数据打包成一个batch
 @dataclass
 class DataCollatorForSupervisedDataset(object):
     """Collate examples for supervised fine-tuning."""
@@ -769,6 +775,8 @@ class DataCollatorForSupervisedDataset(object):
         batch = dict(
             input_ids=input_ids,
             labels=labels,
+            # pad_token_id就是填充的东西，也就是说，input_ids中不是pad_token_id的地方是1，其他是0
+            # ——经典
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
 
@@ -788,6 +796,7 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
                                 data_path=data_args.data_path,
                                 data_args=data_args)
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+    # 看。
     return dict(train_dataset=train_dataset,
                 eval_dataset=None,
                 data_collator=data_collator)

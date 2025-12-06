@@ -118,8 +118,11 @@ class LlavaMetaForCausalLM(ABC):
 
     def encode_images(self, images):
         image_features = self.get_model().get_vision_tower()(images)
+        # 这一份视觉特征是未经处理的原始特征，维度还是视觉编码器的维度
         image_features_origin = image_features
+        # 进入SAP
         image_features = self.get_model().pooling(image_features)
+        # 池化后的视觉特征映射进llm空间
         image_features = self.get_model().mm_projector(image_features)  
         return image_features, image_features_origin
 
@@ -180,7 +183,10 @@ class LlavaMetaForCausalLM(ABC):
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels, images, learnable_tokens, model_version='phi2'
     ):
+        # 764 is the '.' token in the tokenizer（也就是文本空间的'.'）
         dot_tokens = self.get_model().embed_tokens(torch.full((learnable_tokens.size(0),), 764, device=input_ids.device, dtype=input_ids.dtype))
+        # learnable_tokens是kaiming初始化的可学习token，均值为0（也就是0附近）
+        # 0附近的learnable token和文本空间的'.'加起来后，让learnable_tokens和文本空间更接近
         learnable_tokens = learnable_tokens + dot_tokens
         modal = [2]
         vision_tower = self.get_vision_tower()
@@ -209,13 +215,20 @@ class LlavaMetaForCausalLM(ABC):
                 return input_ids, position_ids, attention_mask, past_key_values, None, labels, [], None, learnable_tokens.shape[0], modal
 
         if type(images) is list or images.ndim == 5:
+            # (bs, num_images, C, H, W) -> (bs * num_images, C, H, W)
+            # 把前两维度展平成为4d形状，但是每个batch的图片全部连一起了
             concat_images = torch.cat([image for image in images], dim=0)
+            # 注意，image_features是池化后的特征，而后者是原始的视觉特征
             image_features, image_features_origin = self.encode_images(concat_images)
+            # 将4d的视觉特征重新分为5d的形状（是列表，没有stack成张量）
+            # 图片数和bs都是不变的，只是每个图片对应的特征可能因为池化变少了
             split_sizes = [image.shape[0] for image in images]
             image_features = torch.split(image_features, split_sizes, dim=0)
             image_features_origin = torch.split(image_features_origin, split_sizes, dim=0)
+            # 将一个batch里的所有图片的patch的特征合在一起
             image_features = [x.flatten(0, 1).to(self.device) for x in image_features]
             image_features_origin = [x.flatten(0, 1).to(self.device) for x in image_features_origin]
+            # 就成了(bs, image_num * patch_num, dim)
             image_features = torch.stack(image_features, dim=0)
             image_features_origin = torch.stack(image_features_origin, dim=0)
         else:

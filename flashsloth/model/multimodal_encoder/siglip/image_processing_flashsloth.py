@@ -46,6 +46,7 @@ import PIL
 from PIL.Image import Resampling as PILImageResampling
 
 
+# 把图像填充成正方形后就会经过他处理
 class ImpImageProcessor(BaseImageProcessor):
     r"""
     Constructs a CLIP image processor.
@@ -257,6 +258,7 @@ class ImpImageProcessor(BaseImageProcessor):
         image_std = image_std if image_std is not None else self.image_std
         do_convert_rgb = do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
 
+        # 保证是list，传入了单张图像也变成list
         images = make_list_of_images(images)
 
         if not valid_images(images):
@@ -282,6 +284,7 @@ class ImpImageProcessor(BaseImageProcessor):
             images = [convert_to_rgb(image) for image in images]
 
         # All transformations expect numpy arrays.
+        # 转成numpy数组
         images = [to_numpy_array(image) for image in images]
 
         if do_resize:
@@ -296,6 +299,7 @@ class ImpImageProcessor(BaseImageProcessor):
         if do_normalize:
             images = [self.normalize(image=image, mean=image_mean, std=image_std) for image in images]
 
+        # 通道维度提前
         images = [to_channel_dimension_format(image, data_format) for image in images]
 
         data = {"pixel_values": images}
